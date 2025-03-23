@@ -56,7 +56,7 @@ namespace REPO_FragileValuables.UI
             PhysGrabObject target = __instance.target;
             var valuable = target.GetComponent<ValuableObject>();
 
-            if (!valuable || !ValuableObjectPatcher.currentFragileValuables.Contains(valuable))
+            if (!valuable || !IncreasedValuableObject.currentFragileValuables.Contains(valuable))
                 return;
 
             __instance.waitTime = displayTime;
@@ -110,7 +110,7 @@ namespace REPO_FragileValuables.UI
                 return;
 
             ValuableObject valuableObject = _grabObject.GetComponent<ValuableObject>();
-            if (valuableObject && ValuableObjectPatcher.currentFragileValuables.Contains(valuableObject))
+            if (valuableObject && IncreasedValuableObject.currentFragileValuables.Contains(valuableObject))
                 __instance.colorValue = uiColorPriceText;
         }
 
