@@ -16,56 +16,66 @@ namespace REPO_FragileValuables
         public static HashSet<ValuableObject> currentFragileValuables = new HashSet<ValuableObject>();
 
         public ValuableObject valuableObject;
+        public PhotonView photonView;
+        public PhysGrabObjectImpactDetector impactDetector;
+        public Durability customDurability;
+        public Value customValue;
 
 
         public void Awake()
         {
-            if (GameManager.Multiplayer() && !PhotonNetwork.IsMasterClient)
-                return;
-
-            if (random == null)
-                random = new System.Random((int)Time.time);
-
             valuableObject = GetComponent<ValuableObject>();
-
-            if (!valuableObject || valuableObject.durabilityPreset == null || valuableObject.durabilityPreset.fragility < 90 || (valuableObject.physAttributePreset != null && valuableObject.physAttributePreset.mass > 1) || (valuableObject.valuePreset != null && valuableObject.valuePreset.valueMin >= 5000f))
-                return;
-
-            float chance = (float)random.NextDouble();
-            if (chance >= 1 - ConfigSettings.fragileValuableChance.Value)
-            {
-                enabled = true;
-                IncreaseFragility();
-            }
+            photonView = gameObject.GetComponent<PhotonView>();
+            impactDetector = gameObject.GetComponent<PhysGrabObjectImpactDetector>();
         }
 
 
         public void Start()
         {
-            if ((GameManager.Multiplayer() && !PhotonNetwork.IsMasterClient) || !valuableObject)
-                return;
-
-            if (currentFragileValuables.Contains(valuableObject))
+            if (!GameManager.Multiplayer() || PhotonNetwork.IsMasterClient)
             {
-                PhotonView photonView = gameObject.GetComponent<PhotonView>();
-                photonView.RPC("IncreaseFragilityRPC", RpcTarget.All);
+                if (random == null)
+                    random = new System.Random((int)Time.time);
+
+                if (valuableObject && photonView && impactDetector && valuableObject.durabilityPreset != null && valuableObject.valuePreset != null && valuableObject.physAttributePreset != null
+                    && (ConfigSettings.minFragilityThreshold.Value == -1 || valuableObject.durabilityPreset.fragility >= ConfigSettings.minFragilityThreshold.Value)
+                    && (ConfigSettings.minValueThreshold.Value == -1 || valuableObject.valuePreset.valueMin >= ConfigSettings.minValueThreshold.Value)
+                    && (ConfigSettings.maxValueThreshold.Value == -1 || valuableObject.valuePreset.valueMin <= ConfigSettings.maxValueThreshold.Value)
+                    && (ConfigSettings.minMassThreshold.Value == -1 || valuableObject.physAttributePreset.mass >= ConfigSettings.minMassThreshold.Value)
+                    && (ConfigSettings.maxMassThreshold.Value == -1 || valuableObject.physAttributePreset.mass <= ConfigSettings.maxMassThreshold.Value))
+                {
+                    float chance = (float)random.NextDouble();
+                    if (chance >= 1 - ConfigSettings.fragileValuableChance.Value)
+                    {
+                        //IncreaseFragility();
+                        photonView.RPC("IncreaseFragilityRPC", RpcTarget.All);
+                        return;
+                    }
+                }
             }
+
+            if (!valuableObject || !currentFragileValuables.Contains(valuableObject))
+                enabled = false;
+        }
+
+
+        public void OnDestroy()
+        {
+            if (valuableObject && currentFragileValuables.Contains(valuableObject))
+                currentFragileValuables.Remove(valuableObject);
         }
 
 
         [PunRPC]
         public void IncreaseFragilityRPC()
         {
-            if ((GameManager.Multiplayer() && !PhotonNetwork.IsMasterClient) || !valuableObject)
-                return;
             IncreaseFragility();
         }
 
 
         public void IncreaseFragility()
         {
-            enabled = true;
-            if (currentFragileValuables.Contains(valuableObject))
+            if (!valuableObject || !impactDetector || currentFragileValuables.Contains(valuableObject))
                 return;
 
             string objectName = valuableObject.name;
@@ -91,29 +101,28 @@ namespace REPO_FragileValuables
 
             customDurability.durability = valuableObject.durabilityPreset.durability * 0.01f; // ConfigSettings.durabilityMultiplier.Value;
             customDurability.fragility = valuableObject.durabilityPreset.fragility * ConfigSettings.fragilityMultiplier.Value;
-
             customValue.valueMin = valuableObject.valuePreset.valueMin * ConfigSettings.priceMultiplier.Value;
             customValue.valueMax = valuableObject.valuePreset.valueMax * ConfigSettings.priceMultiplier.Value;
 
-            currentFragileValuables.Add(valuableObject);
-            Plugin.LogVerbose("Increasing fragility and value of object: " + valuableObject.name + " - Fragility: " + valuableObject.durabilityPreset.fragility + " => " + customDurability.fragility + " Durability: " + valuableObject.durabilityPreset.durability + " => " + customDurability.durability + " ValueMin: " + valuableObject.valuePreset.valueMin + " => " + customValue.valueMin + " ValueMax: " + valuableObject.valuePreset.valueMax + " => " + customValue.valueMax);
+            if (ConfigSettings.verboseLogs.Value)
+                Plugin.LogVerbose("Increasing fragility and value of object: " + valuableObject.name + " - Fragility: " + valuableObject.durabilityPreset.fragility + " => " + customDurability.fragility + " Durability: " + valuableObject.durabilityPreset.durability + " => " + customDurability.durability + " ValueMin: " + valuableObject.valuePreset.valueMin + " => " + customValue.valueMin + " ValueMax: " + valuableObject.valuePreset.valueMax + " => " + customValue.valueMax);
+            else
+                Plugin.Log("Increasing fragility and value of object: " + valuableObject.name);
 
+            this.customDurability = customDurability;
+            this.customValue = customValue;
             valuableObject.durabilityPreset = customDurability;
             valuableObject.valuePreset = customValue;
-        }
+            impactDetector.fragility = valuableObject.durabilityPreset.fragility;
+            impactDetector.durability = valuableObject.durabilityPreset.durability;
 
-
-        [HarmonyPatch(typeof(LevelGenerator), "Start")]
-        [HarmonyPrefix]
-        private static void OnLevelGenerationStart()
-        {
-            currentFragileValuables.Clear();
+            currentFragileValuables.Add(valuableObject);
         }
 
 
         [HarmonyPatch(typeof(LevelGenerator), "GenerateDone")]
         [HarmonyPostfix]
-        private static void OnLevelGenerated()
+        public static void OnLevelGenerated()
         {
             if (!GameManager.Multiplayer() || PhotonNetwork.IsMasterClient)
                 Plugin.Log("Spawned " + currentFragileValuables.Count + " increased fragile valuables.");
@@ -122,10 +131,9 @@ namespace REPO_FragileValuables
 
         [HarmonyPatch(typeof(ValuableObject), "Awake")]
         [HarmonyPostfix]
-        private static void OnAwake(ValuableObject __instance)
+        public static void OnAwake(ValuableObject __instance)
         {
             var increasedValuableObject = __instance.gameObject.AddComponent<IncreasedValuableObject>();
-            increasedValuableObject.enabled = false;
         }
     }
 }
