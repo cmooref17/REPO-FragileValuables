@@ -13,6 +13,7 @@ namespace REPO_FragileValuables.UI
         internal readonly static Color invalidColor = new Color(0, 0, 0, 0);
         internal readonly static Color defaultUIColor = new Color(0, 0.8f, 1f, 1);
         public static Color uiColorMiddle = defaultUIColor;
+        public static Color uiColorMiddleReminder = defaultUIColor;
         public static Color uiColorCorner = defaultUIColor;
         public static Color uiColorPriceText = defaultUIColor;
         public static int displayTime = 2;
@@ -31,18 +32,29 @@ namespace REPO_FragileValuables.UI
         {
             middleImages.Clear();
 
-            Color uiColor = ConfigSettings.ParseUIColorString();
+            /*Color uiColor = ConfigSettings.ParseUIColorString();
             if (uiColor == invalidColor)
             {
                 uiColor = defaultUIColor;
                 Plugin.LogErrorVerbose("Failed to parse ui color. Reverting to default: " + uiColor);
             }
             else
-                Plugin.LogVerbose("Successfully parsed color: " + uiColor);
+                Plugin.LogVerbose("Successfully parsed color: " + uiColor);*/
 
-            uiColorMiddle = new Color(uiColor.r, uiColor.g, uiColor.b, 0.1f);
+            /*uiColorMiddle = new Color(uiColor.r, uiColor.g, uiColor.b, 0.1f);
             uiColorCorner = new Color(uiColor.r, uiColor.g, uiColor.b, 0.8f);
-            uiColorPriceText = new Color(uiColor.r, uiColor.g, uiColor.b, 1f);
+            uiColorPriceText = new Color(uiColor.r, uiColor.g, uiColor.b, 1f);*/
+
+            Color baseColor;
+            if (!ColorUtility.TryParseHtmlString('#' + ConfigSettings.fragileUIColor.Value.Trim(' ').TrimStart('#'), out baseColor))
+            {
+                baseColor = defaultUIColor;
+                Plugin.LogError("Failed to parse UI color hex: " + ConfigSettings.fragileUIColor.Value + ". Using default color.");
+            }
+
+            uiColorMiddle = new Color(baseColor.r, baseColor.g, baseColor.b, 0.1f);
+            uiColorCorner = new Color(baseColor.r, baseColor.g, baseColor.b, 0.8f);
+            uiColorPriceText = new Color(baseColor.r, baseColor.g, baseColor.b, 1f);
         }
 
 
@@ -50,7 +62,7 @@ namespace REPO_FragileValuables.UI
         [HarmonyPrefix]
         public static void OnStart(ref ValuableDiscoverGraphic.State ___state, ValuableDiscoverGraphic __instance)
         {
-            if (___state != ValuableDiscoverGraphic.State.Discover || !ConfigSettings.useCustomUIColor.Value)
+            if ((___state != ValuableDiscoverGraphic.State.Discover && ___state != ValuableDiscoverGraphic.State.Reminder) || !ConfigSettings.useCustomUIColor.Value)
                 return;
 
             PhysGrabObject target = __instance.target;
@@ -62,6 +74,8 @@ namespace REPO_FragileValuables.UI
             __instance.waitTime = displayTime;
             __instance.colorDiscoverMiddle = uiColorMiddle;
             __instance.colorDiscoverCorner = uiColorCorner;
+            __instance.ColorReminderMiddle = new Color(uiColorMiddle.r, uiColorMiddle.g, uiColorMiddle.b, uiColorMiddle.a / 2f);
+            __instance.ColorReminderCorner = uiColorCorner;
 
             Image imageMiddle = __instance.middle?.GetComponent<Image>();
             if (imageMiddle)
@@ -87,7 +101,7 @@ namespace REPO_FragileValuables.UI
         [HarmonyPostfix]
         public static void UpdateAlpha(ref ValuableDiscoverGraphic.State ___state, ref float ___waitTimer, ValuableDiscoverGraphic __instance)
         {
-            if (___state != ValuableDiscoverGraphic.State.Discover || !middleImages.TryGetValue(__instance, out Image image))
+            if ((___state != ValuableDiscoverGraphic.State.Discover && ___state != ValuableDiscoverGraphic.State.Reminder) || !middleImages.TryGetValue(__instance, out Image image))
                 return;
 
             float value = __instance.waitTime - ___waitTimer;
@@ -98,7 +112,7 @@ namespace REPO_FragileValuables.UI
         }
 
 
-        [HarmonyPatch(typeof(WorldSpaceUIValue), "Show")]
+        [HarmonyPatch(typeof(WorldSpaceUIValue), "Show", new[] { typeof(PhysGrabObject), typeof(int), typeof(bool), typeof(Vector3) })]
         [HarmonyPrefix]
         public static void OnShowValuePrefix(ref PhysGrabObject ___currentPhysGrabObject, PhysGrabObject _grabObject, int _value, bool _cost, Vector3 _offset, WorldSpaceUIValue __instance)
         {
@@ -115,7 +129,7 @@ namespace REPO_FragileValuables.UI
         }
 
 
-        [HarmonyPatch(typeof(WorldSpaceUIValue), "Show")]
+        [HarmonyPatch(typeof(WorldSpaceUIValue), "Show", new[] { typeof(PhysGrabObject), typeof(int), typeof(bool), typeof(Vector3) })]
         [HarmonyPostfix]
         public static void OnShowValuePostfix(PhysGrabObject _grabObject, int _value, bool _cost, Vector3 _offset, WorldSpaceUIValue __instance)
         {
